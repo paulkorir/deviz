@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Display Local Image on Canvas with Zoom, Pan, Coordinates, and Draggable Lines</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        canvas {
+            border: 1px solid black;
+        }
+        #coordinates {
+            margin-top: 10px;
+        }
+        #controls {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <input type="file" id="fileInput" accept="image/*">
+    <canvas id="imageCanvas"></canvas>
+    <div id="coordinates"></div>
+    <div id="controls">
+        <button id="zoomInButton">+</button>
+        <button id="zoomOutButton">-</button>
+        <button id="resetButton">Reset View</button>
+    </div>
+
+    <script>
+        let scale = 1;
+        const scaleFactor = 1.1;
+        let originX = 0;
+        let originY = 0;
+        let isDragging = false;
+        let isLineDragging = false;
+        let isHorizontalLineDragging = false;
+        let startX, startY;
+        let lineX = null;
+        let lineY = null;
+
+        const canvas = document.getElementById('imageCanvas');
+        const context = canvas.getContext('2d');
+        let image = new Image();
+
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    image.onload = function() {
+                        adjustCanvasSize();
+                        resetView();
+                    };
+                    image.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        canvas.addEventListener('click', function(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = (event.clientX - rect.left - originX) / scale;
+            const y = (event.clientY - rect.top - originY) / scale;
+            document.getElementById('coordinates').innerText = `X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}`;
+            if (lineX === null) {
+                lineX = x;
+                redraw();
+            } else if (lineY === null) {
+                lineY = y;
+                redraw();
+            }
+        });
+
+        canvas.addEventListener('mousedown', function(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = (event.clientX - rect.left - originX) / scale;
+            const y = (event.clientY - rect.top - originY) / scale;
+            if (lineX !== null && Math.abs(x - lineX) < 5) {
+                isLineDragging = true;
+            } else if (lineY !== null && Math.abs(y - lineY) < 5) {
+                isHorizontalLineDragging = true;
+            } else {
+                isDragging = true;
+                startX = event.clientX - originX;
+                startY = event.clientY - originY;
+            }
+        });
+
+        canvas.addEventListener('mousemove', function(event) {
+            if (isLineDragging) {
+                const rect = canvas.getBoundingClientRect();
+                lineX = (event.clientX - rect.left - originX) / scale;
+                redraw();
+            } else if (isHorizontalLineDragging) {
+                const rect = canvas.getBoundingClientRect();
+                lineY = (event.clientY - rect.top - originY) / scale;
+                redraw();
+            } else if (isDragging) {
+                const rect = canvas.getBoundingClientRect();
+                const dx = event.clientX - startX;
+                const dy = event.clientY - startY;
+
+                originX = Math.min(0, Math.max(canvas.width - image.width * scale, dx));
+                originY = Math.min(0, Math.max(canvas.height - image.height * scale, dy));
+
+                redraw();
+            }
+        });
+
+        canvas.addEventListener('mouseup', function() {
+            isDragging = false;
+            isLineDragging = false;
+            isHorizontalLineDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', function() {
+            isDragging = false;
+            isLineDragging = false;
+            isHorizontalLineDragging = false;
+        });
+
+        document.getElementById('zoomInButton').addEventListener('click', function() {
+            zoom(scaleFactor);
+        });
+
+        document.getElementById('zoomOutButton').addEventListener('click', function() {
+            zoom(1 / scaleFactor);
+        });
+
+        document.getElementById('resetButton').addEventListener('click', function() {
+            resetView();
+        });
+
+        function zoom(factor) {
+            const rect = canvas.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+
+            const newScale = scale * factor;
+            const newWidth = image.width * newScale;
+            const newHeight = image.height * newScale;
+
+            if (newWidth >= canvas.width && newHeight >= canvas.height) {
+                scale = newScale;
+                originX = centerX - (centerX - originX) * factor;
+                originY = centerY - (centerY - originY) * factor;
+
+                originX = Math.min(0, Math.max(canvas.width - newWidth, originX));
+                originY = Math.min(0, Math.max(canvas.height - newHeight, originY));
+
+                redraw();
+            }
+        }
+
+        function drawLines() {
+            if (lineX !== null) {
+                context.strokeStyle = 'red';
+                context.lineWidth = 2;
+                context.beginPath();
+                context.moveTo(lineX, 0);
+                context.lineTo(lineX, canvas.height);
+                context.stroke();
+            }
+            if (lineY !== null) {
+                context.strokeStyle = 'red';
+                context.lineWidth = 2;
+                context.beginPath();
+                context.moveTo(0, lineY);
+                context.lineTo(canvas.width, lineY);
+                context.stroke();
+            }
+        }
+
+        function redraw() {
+            context.save(); // Save the current state
+            context.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+            context.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+            context.restore(); // Restore the state
+            context.setTransform(scale, 0, 0, scale, originX, originY);
+            context.drawImage(image, 0, 0, image.width, image.height);
+            drawLines();
+        }
+
+        function resetView() {
+            scale = 1;
+            originX = 0;
+            originY = 0;
+            lineX = null;
+            lineY = null;
+            redraw();
+        }
+
+        function adjustCanvasSize() {
+            canvas.width = image.width;
+            canvas.height = image.height;
+        }
+    </script>
+</body>
+</html>
